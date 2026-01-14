@@ -1,9 +1,9 @@
 import React from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import { Route, Routes, useLocation } from "react-router-dom";
-import Chatbox from "./components/chatbot.jsx";
-import Credits from "./pages/credits.jsx";
-import Community from "./pages/community.jsx";
+import Chatbox from "./components/Chatbot.jsx";
+import Credits from "./pages/Credits.jsx";
+import Community from "./pages/Community.jsx";
 import Loading from "./pages/Loading.jsx";
 import Login from "./pages/Login.jsx";
 import { assets } from "./assets/assets.js";
