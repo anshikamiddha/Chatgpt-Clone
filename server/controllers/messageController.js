@@ -3,6 +3,7 @@ import User from "../models/user.js";
 import axios from "axios";
 import imagekit from "../configs/imageKit.js";
 import openai from "../configs/openai.js";
+import ImageKit from "imagekit";
 
 /* ================= TEXT MESSAGE ================= */
 
@@ -100,10 +101,28 @@ export const imageMessageController = async (req, res) => {
       });
     }
 
-    if (!process.env.IMAGEKIT_URL_ENDPOINT || !process.env.IMAGEKIT_PUBLIC_KEY || !process.env.IMAGEKIT_PRIVATE_KEY) {
+    // Validate ImageKit configuration with detailed checks
+    const publicKey = process.env.IMAGEKIT_PUBLIC_KEY?.trim();
+    const privateKey = process.env.IMAGEKIT_PRIVATE_KEY?.trim();
+    const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT?.trim();
+
+    if (!publicKey || !privateKey || !urlEndpoint) {
+      console.error("ImageKit configuration missing:", {
+        hasUrlEndpoint: !!urlEndpoint,
+        hasPublicKey: !!publicKey,
+        hasPrivateKey: !!privateKey,
+      });
       return res.status(500).json({
         success: false,
-        message: "ImageKit configuration is missing",
+        message: "ImageKit configuration is missing. Please set IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT in your .env file.",
+      });
+    }
+
+    // Validate URL endpoint format
+    if (!urlEndpoint.startsWith("https://")) {
+      return res.status(500).json({
+        success: false,
+        message: "Invalid IMAGEKIT_URL_ENDPOINT. It should start with 'https://' (e.g., https://ik.imagekit.io/your_id)",
       });
     }
 
@@ -163,16 +182,77 @@ export const imageMessageController = async (req, res) => {
       aiImageResponse.data
     ).toString("base64")}`;
 
+    // Re-initialize ImageKit with fresh credentials to ensure they're loaded
     let uploadResponse;
     try {
-      uploadResponse = await imagekit.upload({
+      console.log("Attempting to upload to ImageKit...");
+      
+      // Create a fresh ImageKit instance with current env variables
+      const freshImagekit = new ImageKit({
+        publicKey: publicKey,
+        privateKey: privateKey,
+        urlEndpoint: urlEndpoint,
+      });
+
+      console.log("ImageKit instance created with:", {
+        urlEndpoint: urlEndpoint,
+        publicKeyPrefix: publicKey.substring(0, 10) + "...",
+        hasPrivateKey: !!privateKey,
+      });
+
+      uploadResponse = await freshImagekit.upload({
         file: base64Image,
         fileName: `chatgpt_${Date.now()}.png`,
         folder: "chatgpt/images",
       });
+
+      if (!uploadResponse || !uploadResponse.url) {
+        throw new Error("ImageKit upload failed - no URL returned in response");
+      }
+
+      console.log("✓ Image uploaded successfully to ImageKit:", uploadResponse.url);
     } catch (uploadError) {
-      console.error("Error uploading to ImageKit:", uploadError.message);
-      throw new Error(`Failed to upload image: ${uploadError.message}`);
+      console.error("=== IMAGEKIT UPLOAD ERROR ===");
+      console.error("Error message:", uploadError.message);
+      console.error("Error code:", uploadError.code);
+      console.error("Error details:", {
+        message: uploadError.message,
+        name: uploadError.name,
+        stack: uploadError.stack?.substring(0, 500),
+      });
+      
+      // Check for specific authentication errors
+      const errorMsg = uploadError.message?.toLowerCase() || "";
+      if (
+        errorMsg.includes("authenticated") ||
+        errorMsg.includes("authentication") ||
+        errorMsg.includes("unauthorized") ||
+        errorMsg.includes("invalid credentials")
+      ) {
+        return res.status(401).json({
+          success: false,
+          message: "ImageKit authentication failed. Please verify your credentials:",
+          details: [
+            "1. Check IMAGEKIT_PUBLIC_KEY in your .env file",
+            "2. Check IMAGEKIT_PRIVATE_KEY in your .env file", 
+            "3. Check IMAGEKIT_URL_ENDPOINT in your .env file (format: https://ik.imagekit.io/your_id)",
+            "4. Make sure there are no extra spaces or quotes in the values",
+            "5. Restart your server after updating .env file",
+            "6. Verify credentials in ImageKit dashboard: https://imagekit.io/dashboard"
+          ],
+          error: "Authentication error - verify your ImageKit account credentials",
+        });
+      }
+
+      if (errorMsg.includes("invalid") || errorMsg.includes("bad request")) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid ImageKit request. Please check your configuration.",
+          error: uploadError.message,
+        });
+      }
+
+      throw new Error(`Failed to upload image: ${uploadError.message || "Unknown error"}`);
     }
 
     const reply = {

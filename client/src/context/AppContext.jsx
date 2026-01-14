@@ -1,54 +1,133 @@
-import React, { createContext } from "react";
+import React, { createContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import toast from "react-hot-toast";
 
 const AppContext = createContext();
+
+// Axios base URL
+axios.defaults.baseURL =
+  import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
 
 export const AppContextProvider = ({ children }) => {
   const navigate = useNavigate();
 
-  // States
-  const [user, setUser] = React.useState(null);
-  const [chats, setChats] = React.useState([]);
-  const [selectedChat, setSelectedChat] = React.useState(null);
-  const [theme, setTheme] = React.useState(
+  // ================= STATES =================
+  const [user, setUser] = useState(null);
+  const [chats, setChats] = useState([]);
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem("token") || "");
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [theme, setTheme] = useState(
     localStorage.getItem("theme") || "light"
   );
 
-  // --- Dummy Data (You forgot to define these earlier) ---
-  const dummyUserData = {
-    name: "John Doe",
-    email: "johndoe@example.com",
-  };
-
-  const dummyChats = [
-    { id: 1, title: "Chat 1", messages: [] },
-    { id: 2, title: "Chat 2", messages: [] },
-  ];
-  // -------------------------------------------------------
-
-  // Fetch user data
+  // ================= FETCH USER =================
   const fetchUser = async () => {
-    setUser(dummyUserData);
+    try {
+      const { data } = await axios.get("/api/user/data", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (data.success) {
+        setUser(data.user);
+      } else {
+        toast.error(data.message);
+        setUser(null);
+      }
+    } catch (error) {
+      toast.error("Failed to fetch user data");
+      setUser(null);
+    } finally {
+      setLoadingUser(false);
+    }
   };
 
-  // Fetch chats
+  // ================= FETCH USER CHATS =================
   const fetchUserChats = async () => {
-    setChats(dummyChats);
-    setSelectedChat(dummyChats[0]);
+    try {
+      const { data } = await axios.get("/api/chat/get", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (data.success) {
+        setChats(data.chats);
+
+        // Preserve currently selected chat if it exists, otherwise select first chat
+        if (selectedChat && selectedChat._id) {
+          const updatedChat = data.chats.find(
+            (chat) => chat._id === selectedChat._id
+          );
+          if (updatedChat) {
+            setSelectedChat(updatedChat);
+          } else if (data.chats.length > 0) {
+            setSelectedChat(data.chats[0]);
+          }
+        } else if (data.chats.length > 0) {
+          setSelectedChat(data.chats[0]);
+        }
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error("Failed to fetch chats");
+    }
   };
 
-  // Run when user state changes
-  React.useEffect(() => {
-    if (user) {
+  // ================= CREATE NEW CHAT =================
+  const createNewChat = async () => {
+    try {
+      if (!user) {
+        toast.error("Please login to create a new chat");
+        navigate("/login");
+        return;
+      }
+
+      const { data } = await axios.post(
+        "/api/chat/create",
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!data?.success || !data?.chat) {
+        toast.error(data?.message || "Failed to create new chat");
+        return;
+      }
+
+      // Optimistically add & select the new chat before refetching
+      setChats((prev) => [data.chat, ...prev]);
+      setSelectedChat(data.chat);
+
+      toast.success("New chat created");
+      fetchUserChats(); // refresh to stay in sync with server ordering
+    } catch (error) {
+      toast.error("Failed to create new chat");
+    }
+  };
+
+  // ================= EFFECTS =================
+
+  // Load user when token changes
+  useEffect(() => {
+    if (token) {
+      fetchUser();
       fetchUserChats();
     } else {
-      setChats([]);
-      setSelectedChat(null);
+      setUser(null);
+      setLoadingUser(false);
     }
-  }, [user]);
+  }, [token]);
 
-  // Theme effect
-  React.useEffect(() => {
+  // Theme handling
+  useEffect(() => {
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
     } else {
@@ -57,26 +136,29 @@ export const AppContextProvider = ({ children }) => {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  // Initial fetch
-  React.useEffect(() => {
-    fetchUser();
-  }, []);
-
-  // Context Value
+  // ================= CONTEXT VALUE =================
   const value = {
     navigate,
     user,
     setUser,
-    fetchUser,
     chats,
     setChats,
     selectedChat,
     setSelectedChat,
     theme,
     setTheme,
+    createNewChat,
+    loadingUser,
+    fetchUser,
+    fetchUserChats,
+    token,
+    setToken,
+    axios, // expose configured axios instance for components that need it
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>{children}</AppContext.Provider>
+  );
 };
 
 export const useAppContext = () => React.useContext(AppContext);

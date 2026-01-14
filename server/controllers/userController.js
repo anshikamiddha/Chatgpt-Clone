@@ -1,7 +1,8 @@
 import User from "../models/user.js";
+import Chat from "../models/Chat.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import Chat from "../models/Chat.js";
+
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
         expiresIn: "30d",
@@ -78,38 +79,33 @@ export const getuser= async (req, res) => {
     }       
 }
 export const getPublishedImages = async (req, res) => {
-    try{
-        const publishedImagesMessages=await Chat.aggregate([
-          {$unwind: "$messages"},
-          {
-            $match: {
-              "messages.isImage": true,
-              "messages.isPublished": true,
-            }
-          },
-          {
-            $project: {
-              _id: 0,
-              imageUrl:"$messages.content",
-              userName:"$userName",
-            }
-          },
-          {
-            $group: {
-              _id: "$userName",
-              images: { $push: "$imageUrl" },
-            }
-          }
-        ]);
-        res.json({ success: true, publishedImagesMessages: publishedImagesMessages.reverse() });
-    
-    }
-    catch(error){
-        console.error("Get published images error:", error);
-        return res.status(500).json({ 
-            success: false, 
-            message: "Server Error",
-            error: process.env.NODE_ENV === "development" ? error.message : undefined
+    try {
+        // Find all chats and extract published images from messages
+        const chats = await Chat.find({}).populate('userId', 'name email');
+        
+        const publishedImages = [];
+        
+        // Loop through all chats and find published image messages
+        chats.forEach(chat => {
+            chat.messages.forEach(message => {
+                if (message.isImage && message.isPublished) {
+                    publishedImages.push({
+                        imageUrl: message.content,
+                        userName: chat.userName || (chat.userId?.name) || 'Unknown',
+                        userId: chat.userId?._id || chat.userId,
+                        createdAt: message.timestamp,
+                        chatId: chat._id
+                    });
+                }
+            });
         });
+        
+        // Sort by creation date (newest first)
+        publishedImages.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        
+        res.json({ success: true, images: publishedImages });
+    } catch (error) {
+        console.error("Error fetching published images:", error);
+        res.status(500).json({ success: false, message: "Server Error", error: error.message });
     }
-}
+};

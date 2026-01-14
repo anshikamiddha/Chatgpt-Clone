@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import { useAppContext } from "../context/AppContext";
+import toast from "react-hot-toast";
 
 const dummyPlans = [
   {
@@ -27,12 +29,49 @@ const dummyPlans = [
 const Credits = () => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { axios, token } = useAppContext();
 
-  useEffect(() => {
-    setTimeout(() => {
-      setPlans(dummyPlans);
+  const fetchPlans = async () => {
+    try {
+      const { data } = await axios.get('/api/credit/plans', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (data.success) {
+        setPlans(data.plans);
+      } else {
+        toast.error(data.message || 'Failed to fetch plans');
+      }
+    } catch (error) {
+      console.error("Error fetching plans:", error);
+      toast.error(error.response?.data?.message || error.message || 'Failed to fetch plans');
+    } finally {
       setLoading(false);
-    }, 1000); // fake API delay
+    }
+  };
+
+  const purchasePlan = async (planId) => {
+    try {
+      const { data } = await axios.post('/api/credit/purchase', { planId }, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (data.success) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.message || 'Failed to purchase plan');
+      }
+    } catch (error) {
+      console.error("Purchase plan error:", error);
+      toast.error(error.response?.data?.message || error.message || 'Failed to purchase plan');
+    }
+  };
+  useEffect(() => {
+  fetchPlans(); // fake API delay
   }, []);
 
   if (loading) {
@@ -78,7 +117,19 @@ const Credits = () => {
               </ul>
             </div>
 
-            <button className="mt-6 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg">
+            <button 
+              onClick={() => {
+                toast.promise(
+                  purchasePlan(plan._id),
+                  {
+                    loading: "Processing...",
+                    success: "Redirecting to payment...",
+                    error: "Failed to process payment"
+                  }
+                );
+              }} 
+              className="mt-6 bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg transition-colors"
+            >
               Buy Now
             </button>
           </div>

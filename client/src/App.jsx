@@ -9,7 +9,7 @@ import Login from "./pages/Login.jsx";
 import { assets } from "./assets/assets.js";
 import "./assets/prism.css";
 import { useAppContext } from "./context/AppContext.jsx";
-
+import {Toaster} from 'react-hot-toast';
 const App = () => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(true);
   const { pathname } = useLocation();
@@ -18,8 +18,10 @@ const App = () => {
   const hideSidebar = pathname === "/loading";
 
   return (
+    
     <div className="bg-white text-black dark:bg-gradient-to-b dark:from-[#242124] dark:to-black dark:text-white transition-all duration-500">
-
+      <Toaster/>
+      
       {user ? (
         <>
           {!hideSidebar && !isMenuOpen && (

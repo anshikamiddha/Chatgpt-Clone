@@ -2,10 +2,19 @@ import React, { useEffect, useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { assets } from "../assets/assets";
 import Message from "./Message";
+import toast from "react-hot-toast";
 
 const Chatbot = () => {
   const containerRef = React.useRef(null);
-  const { selectedChat, theme } = useAppContext();
+  const { 
+    selectedChat, 
+    theme, 
+    user, 
+    axios, 
+    token, 
+    setUser, 
+    fetchUserChats 
+  } = useAppContext();
 
   const [messages, setMessages] = useState([]);
   const [prompt, setPrompt] = useState("");
@@ -24,23 +33,83 @@ const Chatbot = () => {
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!prompt.trim()) return;
+    
+    // Check if chat is selected
+    if (!selectedChat || !selectedChat._id) {
+      toast.error("Please select a chat or create a new one");
+      return;
+    }
 
     setLoading(true);
+    const promptCopy = prompt;
+    setPrompt('');
 
+    // Add user message optimistically
     setMessages((prev) => [
       ...prev,
-      { role: "user", content: prompt }
+      { 
+        role: "user", 
+        content: promptCopy, 
+        timestamp: Date.now(), 
+        isImage: false 
+      }
     ]);
 
-    setPrompt("");
+    try {
+      const { data } = await axios.post(
+        `/api/message/${mode}`,
+        {
+          chatId: selectedChat._id,
+          prompt: promptCopy,
+          isPublished: mode === "image" ? isPublished : false
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
 
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "This is a demo response." }
-      ]);
+      if (data.success) {
+        // Add AI response to messages
+        setMessages((prev) => [...prev, data.reply]);
+
+        // Update user credits
+        if (user) {
+          if (mode === 'image') {
+            setUser({
+              ...user,
+              credits: user.credits - 2
+            });
+          } else {
+            setUser({
+              ...user,
+              credits: user.credits - 1
+            });
+          }
+        }
+
+        // Refresh chats to get updated messages from server
+        await fetchUserChats();
+      } else {
+        toast.error(data.message || "Failed to generate response");
+        // Remove the user message we added optimistically
+        setMessages((prev) => prev.slice(0, -1));
+        setPrompt(promptCopy);
+      }
+    } catch (error) {
+      console.error("Message error:", error);
+      toast.error(
+        error.response?.data?.message || 
+        error.message || 
+        "Failed to send message"
+      );
+      // Remove the user message we added optimistically
+      setMessages((prev) => prev.slice(0, -1));
+      setPrompt(promptCopy);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
   useEffect(() => {
     if (containerRef.current) {

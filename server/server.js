@@ -49,5 +49,7 @@ app.use("/api/credit", creditRouter);
 
 // ❌ REMOVE app.listen()
 // ❌ REMOVE startServer()
-
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running on port ${process.env.PORT || 3000}`);
+});
 export default app;

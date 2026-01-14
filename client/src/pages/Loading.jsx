@@ -1,11 +1,13 @@
 import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAppContext } from "../context/AppContext";
 
 const Loading = () => {
   const navigate = useNavigate();
-
+  const {fetchUser}=useAppContext();
   useEffect(() => {
     const timer = setTimeout(() => {
+      fetchUser();
       navigate("/"); // home page
     }, 8000);
 

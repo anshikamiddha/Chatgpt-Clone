@@ -2,6 +2,7 @@ import React from "react";
 import { useAppContext } from "../context/AppContext";
 import { assets } from "../assets/assets";
 import moment from "moment";
+import toast from "react-hot-toast";
 
 const Sidebar = ({ ismenuopen, setismenuopen }) => {
   const {
@@ -11,20 +12,64 @@ const Sidebar = ({ ismenuopen, setismenuopen }) => {
     setTheme,
     user,
     navigate,
+    createNewChat,
+    axios,
+    setChats,
+    fetchUserChats,
+    setToken,
   } = useAppContext();
 
   const [search, setSearch] = React.useState("");
 
+  // Logout
+  const logout = () => {
+    localStorage.removeItem("token");
+    setToken(null);
+    toast.success("Logged out successfully");
+  };
+
+  // Delete Chat
+  const deleteChat = async (e, chatId) => {
+    e.stopPropagation();
+
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this chat?"
+    );
+    if (!confirmDelete) return;
+
+    try {
+      const { data } = await axios.post(
+        "/api/chat/delete",
+        { chatId },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (data.success) {
+        setChats((prev) => prev.filter((chat) => chat._id !== chatId));
+        await fetchUserChats();
+        toast.success(data.message);
+      } else {
+        toast.error(data.message || "Failed to delete chat");
+      }
+    } catch (error) {
+      toast.error("Failed to delete chat");
+    }
+  };
+
   return (
     <div
-      className={`
+      className="
         flex flex-col h-screen min-w-72 p-5
         dark:bg-gradient-to-b from-[#242124]/30 to-[#000000]/30
         border-r border-[#80609F]/30 backdrop-blur-3xl
         transition-all duration-300
-      `}
+      "
     >
-      {/* Close icon (mobile only) */}
+      {/* Close icon (mobile) */}
       <img
         src={assets.close_icon}
         alt="close"
@@ -41,11 +86,7 @@ const Sidebar = ({ ismenuopen, setismenuopen }) => {
 
       {/* New Chat */}
       <button
-        onClick={() => {
-          navigate("/");
-          setSelectedChat(null);
-          setismenuopen(false);
-        }}
+        onClick={createNewChat}
         className="flex justify-center items-center w-full py-2 mt-10 text-white bg-gradient-to-r from-[#A456F7] to-[#3D81F6] text-sm rounded-md"
       >
         <span className="mr-2 text-xl">+</span>
@@ -84,10 +125,10 @@ const Sidebar = ({ ismenuopen, setismenuopen }) => {
                 setSelectedChat(chat);
                 setismenuopen(false);
               }}
-              className="p-2 px-4 dark:bg-[#57317C]/10 border border-gray-300 dark:border-[#80609F]/15 rounded-md cursor-pointer flex justify-between group"
+              className="p-2 px-4 dark:bg-[#57317C]/10 border border-gray-300 dark:border-[#80609F]/15 rounded-md cursor-pointer flex justify-between items-start group"
             >
               <div>
-                <p className="truncate w-full">
+                <p className="truncate w-40">
                   {chat.messages.length
                     ? chat.messages[0].content.slice(0, 32)
                     : chat.name}
@@ -98,6 +139,11 @@ const Sidebar = ({ ismenuopen, setismenuopen }) => {
               </div>
 
               <img
+                onClick={(e) =>
+                  toast.promise(deleteChat(e, chat._id), {
+                    loading: "Deleting...",
+                  })
+                }
                 src={assets.bin_icon}
                 className="hidden group-hover:block w-4 cursor-pointer not-dark:invert"
                 alt="delete"
@@ -157,11 +203,19 @@ const Sidebar = ({ ismenuopen, setismenuopen }) => {
       </div>
 
       {/* User */}
-      <div className="flex items-center gap-3 p-3 mt-4 border border-gray-300 dark:border-white/15 rounded-md">
+      <div className="flex items-center gap-3 p-3 mt-4 border border-gray-300 dark:border-white/15 rounded-md group">
         <img src={assets.user_icon} className="w-7 rounded-full" alt="" />
-        <p className="text-sm truncate">
+        <p className="text-sm truncate flex-1">
           {user ? user.name : "Login your account"}
         </p>
+        {user && (
+          <img
+            onClick={logout}
+            src={assets.logout_icon}
+            className="h-5 cursor-pointer hidden group-hover:block not-dark:invert"
+            alt="logout"
+          />
+        )}
       </div>
     </div>
   );
